@@ -139,6 +139,9 @@ sudo app remove <nama> [--purge]        cabut app (--purge: termasuk data)
   argumen start tanpa karakter khusus), dan menolak domain atau port yang dipakai app lain.
 - **Service app memakai pengamanan systemd:** `ProtectSystem=strict`, `ProtectHome`, `NoNewPrivileges`, dan
   tulis hanya ke `shared/`.
+- **IP pengunjung tidak bisa dipalsukan.** Caddy hanya memercayai `CF-Connecting-IP`/`X-Forwarded-For` dari rentang
+  IP Cloudflare (`caddy/Caddyfile`), lalu mengirim IP asli ke app node sebagai `X-Real-IP` (selalu ditimpa). Pakai
+  header itu untuk pembatas percobaan login.
 - **Rahasia hanya di `shared/.env` di server.** `app env --keys` dan pesan error tidak pernah menampilkan nilainya.
 
 ## 6. Memperbarui platform

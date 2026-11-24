@@ -8,6 +8,7 @@ import path from "node:path";
 import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { parseManifest } from "../lib/manifest.js";
+import { nodeManifest } from "./helpers.js";
 import { renderCaddySite } from "../lib/render.js";
 import { realRun } from "../lib/system.js";
 
@@ -68,6 +69,10 @@ describe("situs statis disajikan Caddy", { skip: hasDocker ? false : "Docker tid
     fs.mkdirSync(path.join(dir, "etc", "sites"), { recursive: true });
     fs.copyFileSync(BASE_CADDYFILE, path.join(dir, "etc", "Caddyfile"));
     fs.writeFileSync(path.join(dir, "etc", "sites", "situs.caddy"), renderCaddySite(parseManifest(MANIFEST), "/srv/current"));
+    // App node palsu: Caddy sendiri di 127.0.0.1:8080 membalas header X-Real-IP yang diterimanya.
+    const api = parseManifest(nodeManifest("api", { domains: ["api.localhost"], port: 8080 }));
+    fs.writeFileSync(path.join(dir, "etc", "sites", "api.caddy"), renderCaddySite(api, "/srv/api"));
+    fs.writeFileSync(path.join(dir, "etc", "sites", "echo.caddy"), 'http://:8080 {\n\trespond "ip={header.X-Real-IP}"\n}\n');
     fs.chmodSync(dir, 0o755);
     const started = realRun("docker", [
       "run", "-d", "--rm", "-p", "127.0.0.1::443",
@@ -157,6 +162,15 @@ describe("situs statis disajikan Caddy", { skip: hasDocker ? false : "Docker tid
     const vcf = get("/kartu.vcf");
     assert.equal(vcf.status, 200);
     assert.equal(vcf.headers["content-type"], "text/vcard; charset=utf-8");
+  });
+
+  it("app node menerima X-Real-IP dari koneksi asli; header palsu dari luar Cloudflare diabaikan", () => {
+    const forged = ["X-Real-IP: 6.6.6.6", "CF-Connecting-IP: 7.7.7.7", "X-Forwarded-For: 8.8.8.8"];
+    const result = get("/", forged, "api.localhost");
+    assert.equal(result.status, 200);
+    const ip = result.body.replace(/^ip=/, "");
+    assert.match(ip, /^[0-9a-f.:]+$/);
+    assert.ok(!["6.6.6.6", "7.7.7.7", "8.8.8.8"].includes(ip), `X-Real-IP dipalsukan: ${ip}`);
   });
 
   it("www dialihkan permanen ke domain utama", () => {
