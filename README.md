@@ -156,6 +156,8 @@ Panel ([server-panel](https://github.com/dodi345/server-panel)) tidak jalan seba
 - **Operasi yang ada:** `list`, `status`, `logs`, `restart`, `rollback`, `env-keys` (nama variabel saja), `env-set`,
   dan `env-unset`. Tidak ada register/remove/exec, tidak ada perintah bebas, dan tidak ada operasi yang
   mengembalikan nilai env.
+- **`list` / `status`:** per app: tipe, domain, port, versi aktif dan sebelumnya, hasil deploy terakhir
+  (`lastDeploy`, termasuk yang gagal/rollback; v1.4), dan properti systemd (status, RAM, jumlah restart otomatis).
 - **Siapa yang boleh:** hanya app yang diberi `sudo app agent-access <nama>`; app lain ditolak di level socket.
 - **Audit:** setiap perubahan tercatat di journald: `journalctl -t server-platform-agent`.
 

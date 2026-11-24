@@ -74,6 +74,8 @@ describe("agent: operasi", () => {
     assert.equal(app.port, 4300);
     assert.equal(app.current.sha, "abcdef1234");
     assert.equal(app.current.repository, "dodi345/contoh");
+    assert.equal(app.lastDeploy.result, "ok");
+    assert.equal(app.lastDeploy.sha, "abcdef1234");
     assert.equal(app.unit.active, "active");
     assert.equal(app.unit.memoryBytes, 52428800);
     assert.doesNotMatch(JSON.stringify(response), /rahasia/);
