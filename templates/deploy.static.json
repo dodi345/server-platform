@@ -7,5 +7,14 @@
   "build": "npm ci && npm run build",
   "package": ["dist"],
   "root": "dist",
-  "not_found": "404.html"
+  "clean_urls": true,
+  "not_found": "404.html",
+  "immutable": ["/_astro/*"],
+  "headers": {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; object-src 'none'; frame-ancestors 'none'"
+  },
+  "redirects": [{ "from": "/lama", "to": "/baru", "status": 301 }]
 }

@@ -37,15 +37,52 @@ describe("renderCaddySite", () => {
     });
     const site = renderCaddySite(m, "/srv/apps/situs/current");
     assert.match(site, /^contoh\.com \{$/m);
-    assert.match(site, /^\troot \* \/srv\/apps\/situs\/current\/dist$/m);
-    assert.match(site, /^\ttry_files \{path\} \/index\.html$/m);
+    assert.match(site, /^\t\troot \* \/srv\/apps\/situs\/current\/dist$/m);
+    assert.match(site, /^\t\ttry_files \{path\} \/index\.html$/m);
     assert.match(site, /^\t\t\trewrite \* \/404\.html$/m);
+    assert.match(site, /^\t\theader Cache-Control "no-cache"$/m);
     assert.match(site, /^www\.contoh\.com \{\n\tredir https:\/\/contoh\.com\{uri\} permanent\n\}$/m);
   });
 
   it("root '.' = folder release itu sendiri", () => {
     const m = parseManifest({ name: "situs", type: "static", domains: ["a.com"], package: ["index.html"] });
-    assert.match(renderCaddySite(m, "/srv/apps/situs/current"), /^\troot \* \/srv\/apps\/situs\/current$/m);
+    assert.match(renderCaddySite(m, "/srv/apps/situs/current"), /^\t\troot \* \/srv\/apps\/situs\/current$/m);
+  });
+
+  it("header, cache immutable, header per file, redirect bersyarat, clean URL, 404 per awalan", () => {
+    const m = parseManifest({
+      name: "situs",
+      type: "static",
+      domains: ["a.com"],
+      package: ["dist"],
+      root: "dist",
+      clean_urls: true,
+      headers: { "X-Frame-Options": "DENY", "Content-Security-Policy": "default-src 'self'; img-src 'self' data:" },
+      file_headers: { "/kartu.vcf": { "Content-Type": "text/vcard; charset=utf-8" } },
+      immutable: ["/_astro/*"],
+      not_found: { "/": "404.html", "/id/": "id/404.html" },
+      redirects: [
+        { from: "/cv.pdf", to: "/cv-en.pdf", status: 301 },
+        { from: "/", to: "/id/", status: 302, when: { cookie: "lang=id" } },
+        { from: "/", to: "/id/", status: 302, when: { header: "Accept-Language", prefix: "id" } },
+        { from: "/", to: "/en/", status: 302 },
+      ],
+    });
+    const site = renderCaddySite(m, "/srv/apps/situs/current");
+    assert.match(site, /^\t\t\tContent-Security-Policy "default-src 'self'; img-src 'self' data:"$/m);
+    assert.match(site, /^\t@immutable path \/_astro\/\*$/m);
+    assert.match(site, /^\t@revalidate not path \/_astro\/\*$/m);
+    assert.match(site, /^\t\theader @file0 >Content-Type "text\/vcard; charset=utf-8"$/m);
+    assert.match(site, /^\t\texpression `\{http\.request\.cookie\.lang\} == "id"`$/m);
+    assert.match(site, /^\t\theader Accept-Language id\*$/m);
+    // Urutan redirect = urutan di deploy.json (di dalam route).
+    const order = [...site.matchAll(/^\t\tredir @redirect(\d) (\S+) (\d+)$/gm)].map((x) => `${x[1]}:${x[2]}:${x[3]}`);
+    assert.deepEqual(order, ["0:/cv-en.pdf:301", "1:/id/:302", "2:/id/:302", "3:/en/:302"]);
+    assert.match(site, /^\t\ttry_files \{path\} \{path\}\.html \{path\}\/index\.html$/m);
+    // 404: awalan terpanjang dulu, dan "/" mengecualikan "/id/".
+    assert.match(site, /@notfound0 \{\n\t\t\texpression `\{err\.status_code\} == 404`\n\t\t\tpath \/id\/\*\n\t\t\}/);
+    assert.match(site, /@notfound1 \{\n\t\t\texpression `\{err\.status_code\} == 404`\n\t\t\tpath \/\*\n\t\t\tnot path \/id\/\*\n\t\t\}/);
+    assert.match(site, /^\t\t\trewrite \* \/id\/404\.html$/m);
   });
 });
 

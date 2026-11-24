@@ -100,7 +100,15 @@ Kalau memakai **domain baru** (bukan `*.stackfolio.web.id`):
 | `required_env` | node | | variabel `.env` yang wajib terisi; kosong = deploy ditolak sebelum restart |
 | `root` | static | | folder berisi `index.html` (default `.`) |
 | `spa` | static | | `true` = path tak dikenal → `index.html` |
-| `not_found` | static | | halaman 404, relatif ke `root`, mis. `"404.html"` |
+| `clean_urls` | static | | `true` = `/card` menyajikan `card.html` (atau `card/index.html`) |
+| `not_found` | static | | halaman 404 relatif ke `root`: `"404.html"`, atau per awalan `{"/id/": "id/404.html", "/": "404.html"}`. Status tetap 404 |
+| `headers` | static | | header untuk semua respons, mis. CSP dan header keamanan |
+| `file_headers` | static | | header untuk path tertentu, mis. `{"/kartu.vcf": {"Content-Type": "text/vcard; charset=utf-8"}}` |
+| `immutable` | static | | pola path yang di-cache setahun, mis. `["/_astro/*"]`. Selain itu selalu `Cache-Control: no-cache` (dicek ulang, 304 kalau sama), supaya pengunjung langsung dapat versi baru |
+| `redirects` | static | | daftar `{ "from": "/cv.pdf", "to": "/cv-en.pdf", "status": 301 }`, dievaluasi berurutan. Syarat opsional `"when": { "cookie": "lang=id" }` atau `"when": { "header": "Accept-Language", "prefix": "id" }` |
+
+Semua nilai divalidasi ketat (tanpa kutip, kurung kurawal, atau baris baru), jadi `deploy.json` tidak bisa
+menyisipkan config Caddy lain. `Cache-Control` diatur platform lewat `immutable`.
 
 App node berjalan dengan `WorkingDirectory` = folder release, sebagai user `app-<nama>`, dengan env dari
 `shared/.env`. App hanya bisa menulis ke `shared/`, dan harus listen di `127.0.0.1:<port>`; Caddy yang
@@ -158,7 +166,7 @@ di-reload.
 
 ```bash
 npm test     # node --test: manifest, render, deploy/rollback di folder sementara, CLI,
-             # dan validasi Caddyfile dengan image caddy:2 (kalau Docker ada)
+             # validasi Caddyfile + situs statis yang benar-benar disajikan image caddy:2 (kalau Docker ada)
 ```
 
 Tanpa dependency npm. Kode server di `lib/` (ESM + JSDoc), perintah di `bin/`, skrip setup di `setup/`.

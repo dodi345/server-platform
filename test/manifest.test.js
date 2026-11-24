@@ -92,6 +92,46 @@ describe("parseManifest", () => {
     assert.deepEqual(problems({ ...base, domains: ["contoh.com", "www.contoh.com"] }), []);
   });
 
+  it("fitur situs statis: nilai yang bisa memecah config Caddy ditolak", () => {
+    const base = { name: "situs", type: "static", domains: ["a.com"], package: ["dist"] };
+    for (const [field, value] of /** @type {[string, unknown][]} */ ([
+      ["headers", { "X-A": 'nilai "kutip"' }],
+      ["headers", { "X-A": "a\nb" }],
+      ["headers", { "X-A": "{env.SECRET}" }],
+      ["headers", { "X-A": "a`b" }],
+      ["headers", { "Nama Header": "x" }],
+      ["headers", { "Cache-Control": "no-store" }],
+      ["file_headers", { "/a/*": { "Content-Type": "x" } }],
+      ["file_headers", { "relatif": { "Content-Type": "x" } }],
+      ["immutable", ["_astro/*"]],
+      ["immutable", ["/a b/*"]],
+      ["not_found", { "/id": "id/404.html" }],
+      ["not_found", { "/": "../404.html" }],
+      ["redirects", [{ from: "/a", to: "/b", status: 200 }]],
+      ["redirects", [{ from: "/a b", to: "/b" }]],
+      ["redirects", [{ from: "/a", to: "http://x.com/" }]],
+      ["redirects", [{ from: "/a", to: "/b\n}" }]],
+      ["redirects", [{ from: "/", to: "/id/", when: { cookie: "lang=i d" } }]],
+      ["redirects", [{ from: "/", to: "/id/", when: { header: "Accept-Language" } }]],
+      ["redirects", [{ from: "/", to: "/id/", when: { cookie: "a=b", header: "X", prefix: "y" } }]],
+    ])) {
+      assert.ok(problems({ ...base, [field]: value }).some((p) => p.startsWith(field)), `${field}=${JSON.stringify(value)}`);
+    }
+    assert.ok(problems({ ...base, spa: true, clean_urls: true }).length > 0);
+  });
+
+  it("not_found string = semua path; objek diurutkan dari awalan terpanjang", () => {
+    const base = { name: "situs", type: "static", domains: ["a.com"], package: ["dist"] };
+    const one = parseManifest({ ...base, not_found: "404.html" });
+    const many = parseManifest({ ...base, not_found: { "/": "404.html", "/id/": "id/404.html" } });
+    if (one.type !== "static" || many.type !== "static") throw new Error("static");
+    assert.deepEqual(one.not_found, [{ prefix: "/", file: "404.html" }]);
+    assert.deepEqual(many.not_found.map((e) => e.prefix), ["/id/", "/"]);
+    const redirect = parseManifest({ ...base, redirects: [{ from: "/x", to: "https://b.com/y" }] });
+    if (redirect.type !== "static") throw new Error("static");
+    assert.deepEqual(redirect.redirects, [{ from: "/x", to: "https://b.com/y", status: 301, when: null }]);
+  });
+
   it("bukan objek", () => {
     assert.throws(() => parseManifest([]), ManifestError);
     assert.throws(() => parseManifest(null), ManifestError);
