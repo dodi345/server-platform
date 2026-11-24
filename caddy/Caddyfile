@@ -1,0 +1,9 @@
+# server-platform: config utama Caddy (/etc/caddy/Caddyfile).
+# Situs tiap app dibuat otomatis oleh app-deploy di /etc/caddy/sites/<nama>.caddy;
+# jangan menulis situs app di file ini.
+{
+	# Opsional: email untuk pemberitahuan sertifikat (Let's Encrypt/ZeroSSL).
+	# email kamu@contoh.com
+}
+
+import sites/*.caddy

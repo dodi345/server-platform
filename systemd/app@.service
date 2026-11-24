@@ -1,0 +1,39 @@
+# server-platform: template service untuk semua app node (app@<nama>.service).
+# ExecStart dan MemoryMax per app ada di drop-in yang dibuat app-deploy:
+#   /etc/systemd/system/app@<nama>.service.d/10-deploy.conf
+[Unit]
+Description=App %i (server-platform)
+After=network-online.target
+Wants=network-online.target
+# Gagal start 5x dalam 5 menit (mis. error 409 Telegram) = berhenti mencoba.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=app-%i
+Group=app-%i
+WorkingDirectory=/srv/apps/%i/current
+EnvironmentFile=/srv/apps/%i/shared/.env
+Environment=NODE_ENV=production
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=30
+MemoryMax=300M
+UMask=0027
+
+# Pengamanan: app hanya bisa menulis ke folder shared miliknya.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/srv/apps/%i/shared
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

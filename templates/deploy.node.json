@@ -1,0 +1,14 @@
+{
+  "name": "contoh-api",
+  "type": "node",
+  "domains": ["api.stackfolio.web.id"],
+  "node": "24",
+  "build": "npm ci && npm run build && npm prune --omit=dev",
+  "package": ["dist", "node_modules", "package.json"],
+  "port": 4500,
+  "start": ["node", "dist/server.js"],
+  "health": "/health",
+  "shared": ["data"],
+  "memory": "256M",
+  "required_env": ["DATABASE_URL"]
+}

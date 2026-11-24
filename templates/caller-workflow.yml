@@ -1,0 +1,16 @@
+# Salin ke repo app: .github/workflows/deploy.yml (atau tambahkan job ini ke workflow CI yang
+# sudah ada, dengan `needs: <job-test>` supaya deploy hanya setelah test lolos).
+# Secret DEPLOY_SSH_KEY, DEPLOY_HOST, DEPLOY_HOST_KEY didapat dari `sudo app register <nama>`.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    uses: dodi345/server-platform/.github/workflows/deploy.yml@main
+    secrets:
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_HOST_KEY: ${{ secrets.DEPLOY_HOST_KEY }}

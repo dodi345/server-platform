@@ -1,0 +1,11 @@
+#!/usr/bin/env node
+// @ts-check
+// Perintah admin server-platform. Dipasang sebagai /usr/local/bin/app; jalankan dengan sudo.
+import { main } from "../lib/cli.js";
+import { platformPaths, realSystem } from "../lib/system.js";
+
+if (process.getuid?.() !== 0) {
+  console.error("Jalankan dengan sudo, mis.: sudo app list");
+  process.exit(1);
+}
+process.exitCode = await main(process.argv.slice(2), { paths: platformPaths(), sys: realSystem() });

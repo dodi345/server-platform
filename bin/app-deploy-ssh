@@ -1,0 +1,20 @@
+#!/bin/sh
+# Perintah paksa di authorized_keys user "deploy" (dipasang `app register`):
+#   restrict,command="/usr/local/bin/app-deploy-ssh <nama>" ssh-ed25519 ...
+# Nama app ditentukan key-nya, bukan oleh klien. Klien (GitHub Actions) hanya boleh mengirim
+# "deploy <commit-sha>"; paket tar.gz lewat stdin diteruskan ke app-deploy.
+set -eu
+name="${1:-}"
+cmd="${SSH_ORIGINAL_COMMAND:-}"
+case "$cmd" in
+  "deploy "*) sha="${cmd#deploy }" ;;
+  *)
+    echo "ditolak: key ini hanya untuk 'deploy <commit-sha>'" >&2
+    exit 2
+    ;;
+esac
+if ! printf '%s' "$sha" | grep -Eq '^[0-9a-f]{7,40}$'; then
+  echo "ditolak: commit sha tidak valid" >&2
+  exit 2
+fi
+exec sudo -n /usr/local/bin/app-deploy "$name" "$sha"

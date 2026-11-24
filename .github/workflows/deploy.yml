@@ -1,0 +1,95 @@
+# Workflow bersama server-platform: build di GitHub (bukan di server), bungkus isi "package"
+# dari deploy.json, kirim ke server lewat SSH (key khusus app), lalu app-deploy di server
+# memasang release baru + Caddy + systemd. Dipanggil dari repo app; contoh di
+# templates/caller-workflow.yml.
+name: server-platform deploy
+
+on:
+  workflow_call:
+    secrets:
+      DEPLOY_SSH_KEY:
+        description: Private key dari `sudo app register <nama>`
+        required: true
+      DEPLOY_HOST:
+        description: IP publik server
+        required: true
+      DEPLOY_HOST_KEY:
+        description: Host key server (ssh-ed25519 AAAA...), dari `sudo app register <nama>`
+        required: true
+      DEPLOY_PORT:
+        description: Port SSH (default 22)
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build & deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    # Satu deploy per repo pada satu waktu; deploy berikutnya menunggu, tidak membatalkan.
+    concurrency:
+      group: server-platform-deploy-${{ github.repository }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Baca deploy.json
+        id: manifest
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const m = JSON.parse(fs.readFileSync("deploy.json", "utf8"));
+            if (m.node !== undefined && !/^\d{2}$/.test(m.node)) throw new Error("deploy.json node: versi mayor, mis. \"24\"");
+            if (!Array.isArray(m.package) || m.package.length === 0) throw new Error("deploy.json package wajib diisi");
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `node=${m.node ?? ""}\n`);
+            console.log(`app ${m.name} (${m.type}), domain: ${(m.domains ?? []).join(", ")}`);
+          '
+
+      - uses: actions/setup-node@v4
+        if: steps.manifest.outputs.node != ''
+        with:
+          node-version: ${{ steps.manifest.outputs.node }}
+          cache: ${{ hashFiles('package-lock.json') != '' && 'npm' || '' }}
+
+      - name: Build
+        run: |
+          BUILD="$(node -e 'console.log(JSON.parse(require("fs").readFileSync("deploy.json", "utf8")).build ?? "")')"
+          if [ -n "$BUILD" ]; then
+            echo "$ $BUILD"
+            bash -euo pipefail -c "$BUILD"
+          else
+            echo "(tanpa langkah build)"
+          fi
+
+      - name: Bungkus paket
+        run: |
+          mapfile -t PATHS < <(node -e 'for (const p of JSON.parse(require("fs").readFileSync("deploy.json", "utf8")).package) console.log(p)')
+          for p in "${PATHS[@]}"; do
+            [ -e "$p" ] || { echo "::error::path \"$p\" di package tidak ada setelah build"; exit 1; }
+          done
+          tar --owner=0 --group=0 -czf "$RUNNER_TEMP/release.tgz" deploy.json "${PATHS[@]}"
+          ls -lh "$RUNNER_TEMP/release.tgz"
+
+      - name: Kirim ke server dan deploy ${{ github.sha }}
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_HOST_KEY: ${{ secrets.DEPLOY_HOST_KEY }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        run: |
+          PORT="${DEPLOY_PORT:-22}"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ "$PORT" = "22" ]; then HOST_ENTRY="$DEPLOY_HOST"; else HOST_ENTRY="[$DEPLOY_HOST]:$PORT"; fi
+          printf '%s %s\n' "$HOST_ENTRY" "$DEPLOY_HOST_KEY" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key -p "$PORT" \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=20 -o ServerAliveInterval=15 \
+            "deploy@$DEPLOY_HOST" "deploy $GITHUB_SHA" < "$RUNNER_TEMP/release.tgz"
+
+      - name: Hapus key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

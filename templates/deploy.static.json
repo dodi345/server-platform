@@ -1,0 +1,11 @@
+{
+  "name": "contoh-situs",
+  "type": "static",
+  "domains": ["contoh.com", "www.contoh.com"],
+  "redirect_www": true,
+  "node": "24",
+  "build": "npm ci && npm run build",
+  "package": ["dist"],
+  "root": "dist",
+  "not_found": "404.html"
+}

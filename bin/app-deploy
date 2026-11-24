@@ -1,0 +1,46 @@
+#!/usr/bin/env node
+// @ts-check
+// Dipanggil app-deploy-ssh lewat sudo: app-deploy <nama> <commit-sha>, paket tar.gz dari stdin.
+// Output-nya tampil di log GitHub Actions.
+import fs from "node:fs";
+import path from "node:path";
+import { Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { DeployError, deploy, SHA_RE } from "../lib/deploy.js";
+import { appPaths, isRegistered } from "../lib/registry.js";
+import { platformPaths, realSystem } from "../lib/system.js";
+
+const MAX_BYTES = 1024 * 1024 * 1024;
+const [name = "", sha = ""] = process.argv.slice(2);
+const paths = platformPaths();
+const sys = realSystem();
+
+if (process.getuid?.() !== 0) {
+  console.error("app-deploy harus dijalankan sebagai root (lewat sudo)");
+  process.exit(1);
+}
+if (!isRegistered(paths, name) || !SHA_RE.test(sha)) {
+  console.error(`[deploy] ditolak: app "${name}" belum terdaftar atau sha tidak valid`);
+  process.exit(2);
+}
+
+const archive = path.join(appPaths(paths, name).dir, `.incoming-${process.pid}.tgz`);
+let received = 0;
+const limit = new Transform({
+  transform(chunk, _encoding, done) {
+    received += chunk.length;
+    done(received > MAX_BYTES ? new Error("paket lebih dari 1 GB") : null, chunk);
+  },
+});
+
+try {
+  await pipeline(process.stdin, limit, fs.createWriteStream(archive, { mode: 0o600 }));
+  sys.log(`[deploy] paket diterima: ${(received / 1024 / 1024).toFixed(1)} MB`);
+  await deploy({ paths, sys, name, sha, archive });
+} catch (error) {
+  console.error(`[deploy] ✗ ${error instanceof Error ? error.message : String(error)}`);
+  if (!(error instanceof DeployError) && error instanceof Error && error.stack) console.error(error.stack);
+  process.exitCode = 1;
+} finally {
+  fs.rmSync(archive, { force: true });
+}
