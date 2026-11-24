@@ -1,0 +1,15 @@
+# server-platform: socket agent untuk panel. Hanya grup platform-agent yang bisa membuka socket ini
+# (diberikan per app dengan `sudo app agent-access <nama>`). Satu proses agent per koneksi.
+[Unit]
+Description=server-platform agent socket
+
+[Socket]
+ListenStream=/run/server-platform/agent.sock
+SocketUser=root
+SocketGroup=platform-agent
+SocketMode=0660
+Accept=yes
+MaxConnections=8
+
+[Install]
+WantedBy=sockets.target

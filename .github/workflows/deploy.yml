@@ -88,7 +88,7 @@ jobs:
           ssh -i ~/.ssh/deploy_key -p "$PORT" \
             -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
             -o ConnectTimeout=20 -o ServerAliveInterval=15 \
-            "deploy@$DEPLOY_HOST" "deploy $GITHUB_SHA" < "$RUNNER_TEMP/release.tgz"
+            "deploy@$DEPLOY_HOST" "deploy $GITHUB_SHA $GITHUB_REPOSITORY" < "$RUNNER_TEMP/release.tgz"
 
       - name: Hapus key
         if: always()

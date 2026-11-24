@@ -48,7 +48,12 @@ export function fakeSystem(options = {}) {
       const ok = (/** @type {string} */ stdout = "") => ({ status: 0, stdout, stderr: "" });
       if (cmd.endsWith("/node") && args[0] === "--version") return ok(`${options.nodeVersion ?? "v24.11.1"}\n`);
       if (cmd === "systemctl" && args[0] === "is-active") return ok(`${options.activeState?.() ?? "active"}\n`);
-      if (cmd === "systemctl" && args[0] === "show") return ok(`${options.restarts?.() ?? 0}\n`);
+      if (cmd === "systemctl" && args[0] === "show" && args.includes("--value")) return ok(`${options.restarts?.() ?? 0}\n`);
+      if (cmd === "systemctl" && args[0] === "show") {
+        return ok(
+          "ActiveState=active\nSubState=running\nNRestarts=0\nMemoryCurrent=52428800\nCPUUsageNSec=1500000000\nActiveEnterTimestamp=Tue 2026-11-24 10:00:00 UTC\n",
+        );
+      }
       if (cmd === "caddy" && options.caddyValid === false) return { status: 1, stdout: "", stderr: "Error: adapting config" };
       if (cmd === "id") return { status: 1, stdout: "", stderr: "no such user" };
       if (cmd === "hostname") return ok("203.0.113.10 10.0.0.5\n");

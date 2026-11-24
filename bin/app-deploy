@@ -11,7 +11,8 @@ import { appPaths, isRegistered } from "../lib/registry.js";
 import { platformPaths, realSystem } from "../lib/system.js";
 
 const MAX_BYTES = 1024 * 1024 * 1024;
-const [name = "", sha = ""] = process.argv.slice(2);
+const [name = "", sha = "", repository] = process.argv.slice(2);
+const REPOSITORY_RE = /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/;
 const paths = platformPaths();
 const sys = realSystem();
 
@@ -19,7 +20,7 @@ if (process.getuid?.() !== 0) {
   console.error("app-deploy harus dijalankan sebagai root (lewat sudo)");
   process.exit(1);
 }
-if (!isRegistered(paths, name) || !SHA_RE.test(sha)) {
+if (!isRegistered(paths, name) || !SHA_RE.test(sha) || (repository !== undefined && !REPOSITORY_RE.test(repository))) {
   console.error(`[deploy] ditolak: app "${name}" belum terdaftar atau sha tidak valid`);
   process.exit(2);
 }
@@ -36,7 +37,7 @@ const limit = new Transform({
 try {
   await pipeline(process.stdin, limit, fs.createWriteStream(archive, { mode: 0o600 }));
   sys.log(`[deploy] paket diterima: ${(received / 1024 / 1024).toFixed(1)} MB`);
-  await deploy({ paths, sys, name, sha, archive });
+  await deploy({ paths, sys, name, sha, archive, ...(repository === undefined ? {} : { repository }) });
 } catch (error) {
   console.error(`[deploy] ✗ ${error instanceof Error ? error.message : String(error)}`);
   if (!(error instanceof DeployError) && error instanceof Error && error.stack) console.error(error.stack);

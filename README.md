@@ -125,6 +125,9 @@ sudo app exec <nama> <cmd...>   jalankan perintah sebagai user app, dengan .env 
                                 (mis. perintah admin/migrasi; jangan jalankan app sebagai root langsung)
 sudo app restart <nama>         restart + health check (setelah .env diubah)
 sudo app rollback <nama>        kembali ke release sebelumnya
+sudo app env-set <nama> <VAR>   isi/ganti satu variabel (nilai dari stdin, tidak tampil di layar/history)
+sudo app env-unset <nama> <VAR> hapus satu variabel
+sudo app agent-access <nama>    izinkan app ini memakai agent (untuk panel monitoring)
 sudo app register <nama> --rotate-key   key deploy baru (key lama langsung tidak berlaku)
 sudo app remove <nama> [--purge]        cabut app (--purge: termasuk data)
 ```
@@ -144,7 +147,19 @@ sudo app remove <nama> [--purge]        cabut app (--purge: termasuk data)
   header itu untuk pembatas percobaan login.
 - **Rahasia hanya di `shared/.env` di server.** `app env --keys` dan pesan error tidak pernah menampilkan nilainya.
 
-## 6. Memperbarui platform
+## 6. Agent (untuk panel)
+
+Panel ([server-panel](https://github.com/dodi345/server-panel)) tidak jalan sebagai root. Aksinya lewat **agent**:
+
+- **Akses:** socket `/run/server-platform/agent.sock` (`root:platform-agent`, 660), diaktifkan systemd per
+  permintaan (`server-platform-agent.socket`). Tidak ada proses yang jalan saat idle.
+- **Operasi yang ada:** `list`, `status`, `logs`, `restart`, `rollback`, `env-keys` (nama variabel saja), `env-set`,
+  dan `env-unset`. Tidak ada register/remove/exec, tidak ada perintah bebas, dan tidak ada operasi yang
+  mengembalikan nilai env.
+- **Siapa yang boleh:** hanya app yang diberi `sudo app agent-access <nama>`; app lain ditolak di level socket.
+- **Audit:** setiap perubahan tercatat di journald: `journalctl -t server-platform-agent`.
+
+## 7. Memperbarui platform
 
 ```bash
 cd /opt/server-platform && sudo git pull && sudo bash setup/install.sh
@@ -153,7 +168,7 @@ cd /opt/server-platform && sudo git pull && sudo bash setup/install.sh
 App yang sedang jalan tidak terganggu. Template systemd dan config utama Caddy diperbarui, lalu Caddy
 di-reload.
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 | Gejala | Penyebab / solusi |
 |---|---|

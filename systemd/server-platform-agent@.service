@@ -1,0 +1,16 @@
+# server-platform: satu permintaan agent (lib/agent.js). Operasi terbatas: list, status, logs,
+# restart, rollback, env-keys, env-set, env-unset. Setiap perubahan dicatat ke journald.
+[Unit]
+Description=server-platform agent (satu permintaan)
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/app-agent
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+SyslogIdentifier=server-platform-agent
+User=root
+# Restart/rollback menunggu health check sampai 60 detik.
+TimeoutStartSec=0
+RuntimeMaxSec=180

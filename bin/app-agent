@@ -1,0 +1,39 @@
+#!/usr/bin/env node
+// @ts-check
+// Satu permintaan agent. systemd (server-platform-agent.socket, Accept=yes) memberikan koneksi
+// socket sebagai stdin/stdout: baca satu baris JSON, jawab satu baris JSON, selesai.
+// Log (audit) ke stderr → journald, supaya tidak tercampur dengan jawaban.
+import { handleRequest } from "../lib/agent.js";
+import { platformPaths, realSystem } from "../lib/system.js";
+
+const MAX_BYTES = 64 * 1024;
+const sys = { ...realSystem(), log: (/** @type {string} */ message) => console.error(message) };
+
+/** @param {unknown} response */
+function reply(response) {
+  process.stdout.write(`${JSON.stringify(response)}\n`, () => process.exit(0));
+}
+
+let buffer = "";
+const timer = setTimeout(() => reply({ ok: false, error: "permintaan tidak lengkap" }), 10_000);
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", async (chunk) => {
+  buffer += chunk;
+  if (buffer.length > MAX_BYTES) {
+    clearTimeout(timer);
+    reply({ ok: false, error: "permintaan terlalu besar" });
+    return;
+  }
+  const newline = buffer.indexOf("\n");
+  if (newline === -1) return;
+  clearTimeout(timer);
+  process.stdin.pause();
+  let request;
+  try {
+    request = JSON.parse(buffer.slice(0, newline));
+  } catch {
+    reply({ ok: false, error: "bukan JSON valid" });
+    return;
+  }
+  reply(await handleRequest(request, { paths: platformPaths(), sys }));
+});

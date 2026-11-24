@@ -57,7 +57,7 @@ chmod -R go-w "$LIB.new"
 chmod 755 "$LIB.new"/bin/*
 rm -rf "$LIB"
 mv "$LIB.new" "$LIB"
-for cmd in app app-deploy app-deploy-ssh; do
+for cmd in app app-deploy app-deploy-ssh app-agent; do
   ln -sfn "$LIB/bin/$cmd" "/usr/local/bin/$cmd"
 done
 
@@ -81,6 +81,14 @@ rm -f "$tmp"
 step "Template systemd app@.service"
 install -m 644 "$SRC/systemd/app@.service" /etc/systemd/system/app@.service
 systemctl daemon-reload
+
+step "Agent untuk panel (socket /run/server-platform/agent.sock, grup platform-agent)"
+getent group platform-agent >/dev/null || groupadd --system platform-agent
+install -m 644 "$SRC/systemd/server-platform-agent.socket" /etc/systemd/system/server-platform-agent.socket
+install -m 644 "$SRC/systemd/server-platform-agent@.service" /etc/systemd/system/server-platform-agent@.service
+systemctl daemon-reload
+systemctl enable --quiet server-platform-agent.socket
+systemctl restart server-platform-agent.socket
 
 step "Config Caddy"
 install -d -m 755 /etc/caddy/sites /srv/apps
