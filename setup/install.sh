@@ -90,6 +90,14 @@ systemctl daemon-reload
 systemctl enable --quiet server-platform-agent.socket
 systemctl restart server-platform-agent.socket
 
+step "Backup off-site (timer harian; aktif setelah sudo app backup-setup)"
+install -d -m 700 /etc/server-platform /var/lib/server-platform
+install -d -m 711 /var/tmp/server-platform-backup
+install -m 644 "$SRC/systemd/server-platform-backup.service" /etc/systemd/system/server-platform-backup.service
+install -m 644 "$SRC/systemd/server-platform-backup.timer" /etc/systemd/system/server-platform-backup.timer
+systemctl daemon-reload
+systemctl enable --quiet --now server-platform-backup.timer
+
 step "Config Caddy"
 install -d -m 755 /etc/caddy/sites /srv/apps
 if ! cmp -s "$SRC/caddy/Caddyfile" /etc/caddy/Caddyfile; then

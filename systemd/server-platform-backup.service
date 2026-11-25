@@ -1,0 +1,15 @@
+# server-platform: backup off-site semua app ke R2 (sudo app backup-run). Dipicu timer harian.
+[Unit]
+Description=server-platform backup off-site (R2)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/app backup-run
+SyslogIdentifier=server-platform-backup
+# Jangan mengganggu app yang sedang melayani pengunjung.
+Nice=10
+IOSchedulingClass=idle
+MemoryMax=300M
+TimeoutStartSec=1h

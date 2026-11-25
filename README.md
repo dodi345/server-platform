@@ -98,6 +98,7 @@ Kalau memakai **domain baru** (bukan `*.stackfolio.web.id`):
 | `shared` | node | | folder data yang bertahan antar deploy, mis. `["data"]` (tidak boleh ikut `package`) |
 | `memory` | node | | batas RAM systemd, default `"300M"` |
 | `required_env` | node | | variabel `.env` yang wajib terisi; kosong = deploy ditolak sebelum restart |
+| `backup` | node | | file/folder di dalam `shared` yang ikut backup off-site, mis. `["data/app.db"]`. File SQLite disnapshot dengan aman walau app sedang menulis (v1.5) |
 | `root` | static | | folder berisi `index.html` (default `.`) |
 | `spa` | static | | `true` = path tak dikenal → `index.html` |
 | `clean_urls` | static | | `true` = `/card` menyajikan `card.html` (atau `card/index.html`) |
@@ -130,6 +131,8 @@ sudo app env-unset <nama> <VAR> hapus satu variabel
 sudo app agent-access <nama>    izinkan app ini memakai agent (untuk panel monitoring)
 sudo app register <nama> --rotate-key   key deploy baru (key lama langsung tidak berlaku)
 sudo app remove <nama> [--purge]        cabut app (--purge: termasuk data)
+sudo app backup-setup | backup-now [nama] | backup-status       backup off-site ke R2 (bagian 7)
+sudo app backup-list <nama> | backup-verify <nama> | backup-restore <nama>
 ```
 
 ## 5. Keamanan
@@ -161,7 +164,50 @@ Panel ([server-panel](https://github.com/dodi345/server-panel)) tidak jalan seba
 - **Siapa yang boleh:** hanya app yang diberi `sudo app agent-access <nama>`; app lain ditolak di level socket.
 - **Audit:** setiap perubahan tercatat di journald: `journalctl -t server-platform-agent`.
 
-## 7. Memperbarui platform
+## 7. Backup off-site (Cloudflare R2)
+
+Tiap hari jam **03:00 WIB** (timer `server-platform-backup.timer`), setiap app yang punya `backup` di
+`deploy.json` dibackup ke R2:
+
+- **Isi:** file di `backup` (SQLite disnapshot dengan API backup SQLite **sebagai user app**, supaya file
+  `-wal`/`-shm` tidak berubah jadi milik root, lalu dicek `integrity_check`), `.env` app, dan manifest
+  (checksum tiap file, versi yang sedang jalan).
+- **Enkripsi:** X25519 + AES-256-GCM. Server hanya menyimpan **kunci publik**; isi backup di R2 tidak bisa
+  dibaca dari server maupun oleh siapa pun yang memegang token R2. **Kunci privat** ditampilkan sekali saat
+  setup dan hanya dipakai untuk restore/verify; simpan di password manager.
+- **Retensi:** 14 harian, 8 mingguan, 6 bulanan (seperti `restic --keep-daily/weekly/monthly`: yang dihitung
+  hari/minggu/bulan yang punya backup, jadi backup lama tidak terbuang kalau backup sempat berhenti).
+  Backup < 2 hari tidak pernah dihapus. Gagal menghapus (mis. *bucket lock*) hanya dicatat.
+- **Pantauan:** hasil per app di `/var/lib/server-platform/backup-state.json`, dibaca panel lewat agent
+  (peringatan kalau gagal atau terlambat). Log: `journalctl -u server-platform-backup`.
+
+**Setup (sekali):** buat bucket R2 (tanpa akses publik) dan API token **Object Read & Write** khusus bucket
+itu, lalu:
+
+```bash
+sudo app backup-setup        # endpoint/account ID, bucket, Access Key ID, Secret (tidak tampil)
+                             # → tes unggah/daftar/unduh, lalu kunci privat ditampilkan SEKALI
+sudo app backup-now          # backup pertama
+sudo app backup-status
+```
+
+Kredensial disimpan di `/etc/server-platform/backup.json` (root, 600). Ganti kredensial tanpa ganti kunci:
+`sudo app backup-setup --keep-key`. Server baru dengan kunci lama: `--public-key spb-pub-…`.
+
+**Restore:**
+
+```bash
+sudo app backup-list grammar
+sudo app backup-verify grammar                 # buka + cek checksum + integrity_check, tanpa mengubah apa pun
+sudo app backup-restore grammar [latest|<file>] [--with-env]
+```
+
+Restore menghentikan app, memindahkan file lama ke `*.sebelum-restore-<waktu>`, memasang file dari backup,
+lalu menjalankan app lagi dengan health check. Kunci privat diketik (tidak tampil) atau `--key-file <path>`.
+**VM hilang total:** install platform → `sudo app register <nama>` → `sudo app backup-setup --public-key …`
+→ `sudo app backup-restore <nama> --with-env` → deploy ulang (Re-run job di GitHub).
+
+## 8. Memperbarui platform
 
 ```bash
 cd /opt/server-platform && sudo git pull && sudo bash setup/install.sh
@@ -170,7 +216,7 @@ cd /opt/server-platform && sudo git pull && sudo bash setup/install.sh
 App yang sedang jalan tidak terganggu. Template systemd dan config utama Caddy diperbarui, lalu Caddy
 di-reload.
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 | Gejala | Penyebab / solusi |
 |---|---|
@@ -181,11 +227,15 @@ di-reload.
 | Browser: "too many redirects" | SSL/TLS domain di Cloudflare masih Flexible; ubah ke **Full (strict)** |
 | `Permission denied (publickey)` di job | Secret `DEPLOY_SSH_KEY` salah atau key sudah di-rotate |
 | `Host key verification failed` di job | Server di-install ulang: `sudo app register <nama> --rotate-key` lalu perbarui ketiga secret |
+| Backup: `R2 menolak … SignatureDoesNotMatch` | Secret Access Key salah; `sudo app backup-setup --keep-key` |
+| Backup: `R2 menolak … AccessDenied` | Token R2 bukan *Object Read & Write* untuk bucket itu |
+| Job deploy: `backup: field tidak dikenal` | Platform di server masih versi lama; perbarui platform dulu (bagian 8) |
 
 ## Pengembangan
 
 ```bash
-npm test     # node --test: manifest, render, deploy/rollback di folder sementara, CLI,
+npm test     # node --test: manifest, render, deploy/rollback di folder sementara, CLI, backup
+             # (enkripsi, retensi, snapshot SQLite sungguhan, restore, SigV4 dicocokkan dengan botocore),
              # validasi Caddyfile + situs statis yang benar-benar disajikan image caddy:2 (kalau Docker ada)
 ```
 
