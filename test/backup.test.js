@@ -352,6 +352,20 @@ describe("CLI backup", () => {
     assert.equal(fs.existsSync(env.paths.backupConfig), false);
   });
 
+  it("backup-status: app tanpa apa pun untuk di-backup tidak tampil sebagai 'belum pernah'", async () => {
+    const { db } = await setupApp();
+    db.close();
+    configure();
+    await main(["register", "situs"], { paths: env.paths, sys: fakeSystem().sys });
+    const archive = makeArchive(env.root, { name: "situs", type: "static", domains: ["situs.stackfolio.web.id"], package: ["dist"], root: "dist" }, { "dist/index.html": "hai" });
+    await deploy({ paths: env.paths, sys: fakeSystem().sys, name: "situs", sha: "abcdef1234", archive, stableMs: 0 });
+    const { ctx, fake } = cliCtx([], fakeS3());
+    assert.equal(await main(["backup-status"], ctx), 0);
+    const logs = fake.logs.join("\n");
+    assert.match(logs, /situs\s+- tidak ada yang di-backup \(situs statis\)/);
+    assert.match(logs, /words\s+belum pernah/);
+  });
+
   it("backup-run tanpa config = dilewati (timer tidak gagal); backup-now tanpa config = error", async () => {
     const { ctx, fake } = cliCtx([], fakeS3());
     assert.equal(await main(["backup-run"], ctx), 0);
