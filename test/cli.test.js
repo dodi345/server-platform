@@ -5,7 +5,15 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 import { execArgs, main } from "../lib/cli.js";
 import { deploy } from "../lib/deploy.js";
 import { appPaths } from "../lib/registry.js";
-import { createTestEnv, fakeSystem, makeArchive, NODE_FILES, nodeManifest } from "./helpers.js";
+import {
+  createTestEnv,
+  fakeSystem,
+  makeArchive,
+  NODE_FILES,
+  nodeManifest,
+  PYTHON_FILES,
+  pythonManifest,
+} from "./helpers.js";
 
 /** @type {ReturnType<typeof createTestEnv>} */
 let env;
@@ -142,6 +150,22 @@ describe("app exec", () => {
       "--admin",
     ]);
     assert.equal(execArgs(env.paths, "words", ["ls"], false)[3], "--pipe");
+  });
+
+  it("app python: \"python\" = python3.<versi deploy.json> dengan PYTHONPATH=vendor", async () => {
+    await main(["register", "tools"], ctx().context);
+    const archive = makeArchive(env.root, pythonManifest("tools"), PYTHON_FILES);
+    await deploy({ paths: env.paths, sys: fakeSystem().sys, name: "tools", sha: "a1b2c3d", archive, stableMs: 0 });
+    const args = execArgs(env.paths, "tools", ["python", "-m", "flask", "routes"], false);
+    assert.deepEqual(args.slice(args.indexOf("--") - 2), [
+      "--setenv=PYTHONPATH=vendor",
+      "--setenv=PYTHONDONTWRITEBYTECODE=1",
+      "--",
+      "/usr/bin/python3.12",
+      "-m",
+      "flask",
+      "routes",
+    ]);
   });
 
   it("tanpa perintah / app belum deploy ditolak", async () => {

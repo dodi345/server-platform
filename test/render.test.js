@@ -4,8 +4,9 @@ import { describe, it } from "node:test";
 import { checkEnvFile, missingEnv } from "../lib/envfile.js";
 import { authorizedKeyLine, hostKeyValue, withoutAppKey } from "../lib/keys.js";
 import { parseManifest } from "../lib/manifest.js";
-import { renderCaddySite, renderSystemdDropIn } from "../lib/render.js";
-import { nodeManifest } from "./helpers.js";
+import { renderCaddySite, renderSystemdDropIn, runtimeBin } from "../lib/render.js";
+import { platformPaths } from "../lib/system.js";
+import { nodeManifest, pythonManifest } from "./helpers.js";
 
 describe("renderCaddySite", () => {
   it("app node: reverse proxy ke 127.0.0.1:<port>", () => {
@@ -96,6 +97,18 @@ describe("renderSystemdDropIn", () => {
       renderSystemdDropIn(m, "/usr/bin/node"),
       '# server-platform: dibuat otomatis dari deploy.json app "words". Jangan diedit manual.\n[Service]\nExecStart=/usr/bin/node dist/bot/index.js\nMemoryMax=256M\n',
     );
+  });
+
+  it("app python: python3.<versi>, PYTHONPATH=vendor, log tanpa buffer, tanpa .pyc, arena malloc dibatasi", () => {
+    const m = parseManifest(pythonManifest("tools", { start: ["python", "-m", "gunicorn", "--workers", "1", "x.wsgi:app"] }));
+    if (m.type !== "python") throw new Error("python");
+    const bin = runtimeBin(platformPaths(), m);
+    assert.equal(bin, "/usr/bin/python3.12");
+    assert.equal(
+      renderSystemdDropIn(m, bin),
+      '# server-platform: dibuat otomatis dari deploy.json app "tools". Jangan diedit manual.\n[Service]\nExecStart=/usr/bin/python3.12 -m gunicorn --workers 1 x.wsgi:app\nEnvironment=PYTHONPATH=vendor PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 MALLOC_ARENA_MAX=2\nMemoryMax=300M\n',
+    );
+    assert.match(renderCaddySite(m, "/srv/apps/tools/current"), /reverse_proxy 127\.0\.0\.1:4700 \{/);
   });
 });
 

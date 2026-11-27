@@ -42,8 +42,9 @@ jobs:
             import fs from "node:fs";
             const m = JSON.parse(fs.readFileSync("deploy.json", "utf8"));
             if (m.node !== undefined && !/^\d{2}$/.test(m.node)) throw new Error("deploy.json node: versi mayor, mis. \"24\"");
+            if (m.python !== undefined && !/^3\.\d{1,2}$/.test(m.python)) throw new Error("deploy.json python: mis. \"3.12\"");
             if (!Array.isArray(m.package) || m.package.length === 0) throw new Error("deploy.json package wajib diisi");
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, `node=${m.node ?? ""}\n`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `node=${m.node ?? ""}\npython=${m.python ?? ""}\n`);
             console.log(`app ${m.name} (${m.type}), domain: ${(m.domains ?? []).join(", ")}`);
           '
 
@@ -52,6 +53,13 @@ jobs:
         with:
           node-version: ${{ steps.manifest.outputs.node }}
           cache: ${{ hashFiles('package-lock.json') != '' && 'npm' || '' }}
+
+      # App python: versi harus sama dengan Python di server (wheel di vendor/ hanya cocok untuk versi itu).
+      # Runner ubuntu-24.04 x86_64 = sama dengan server, jadi wheel manylinux-nya bisa langsung dipakai.
+      - uses: actions/setup-python@v5
+        if: steps.manifest.outputs.python != ''
+        with:
+          python-version: ${{ steps.manifest.outputs.python }}
 
       - name: Build
         run: |

@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { conflicts, ManifestError, parseManifest } from "../lib/manifest.js";
-import { nodeManifest } from "./helpers.js";
+import { nodeManifest, pythonManifest } from "./helpers.js";
 
 /** @param {unknown} value */
 function problems(value) {
@@ -132,6 +132,32 @@ describe("parseManifest", () => {
     assert.deepEqual(redirect.redirects, [{ from: "/x", to: "https://b.com/y", status: 301, when: null }]);
   });
 
+  it("app python: versi Python, start modul atau file, field service sama dengan node", () => {
+    const m = parseManifest(pythonManifest("tools", { shared: ["data"], backup: ["data/app.db"], memory: "350M" }));
+    assert.equal(m.type, "python");
+    if (m.type !== "python") return;
+    assert.equal(m.python, "3.12");
+    assert.equal(m.node, null);
+    assert.equal(m.port, 4700);
+    assert.equal(m.health, "/api/health");
+    assert.deepEqual(m.shared, ["data"]);
+    assert.deepEqual(m.backup, ["data/app.db"]);
+    assert.equal(m.memory, "350M");
+    assert.equal(parseManifest(pythonManifest("tools", { start: ["python", "app.py"] })).type, "python");
+  });
+
+  it("app python: versi, perintah start, dan field yang salah ditolak", () => {
+    assert.ok(problems(pythonManifest("tools", { python: undefined })).some((p) => p.startsWith("python:")));
+    assert.ok(problems(pythonManifest("tools", { python: "3" })).some((p) => p.startsWith("python:")));
+    assert.ok(problems(pythonManifest("tools", { python: 3.12 })).some((p) => p.startsWith("python:")));
+    assert.ok(problems(pythonManifest("tools", { start: ["node", "app.js"] })).some((p) => p.startsWith("start:")));
+    assert.ok(problems(pythonManifest("tools", { start: ["python", "-m"] })).some((p) => p.startsWith("start:")));
+    assert.ok(problems(pythonManifest("tools", { start: ["python", "-m", "app; rm -rf /"] })).some((p) => p.startsWith("start[2]")));
+    assert.ok(problems(pythonManifest("tools", { spa: true })).includes("spa: field tidak dikenal untuk type python"));
+    assert.ok(problems(nodeManifest("words", { python: "3.12" })).includes("python: field tidak dikenal untuk type node"));
+    assert.ok(problems({ ...pythonManifest("tools"), type: "ruby" }).some((p) => p.startsWith("type:")));
+  });
+
   it("bukan objek", () => {
     assert.throws(() => parseManifest([]), ManifestError);
     assert.throws(() => parseManifest(null), ManifestError);
@@ -146,6 +172,12 @@ describe("conflicts", () => {
     assert.equal(conflicts(a, [b]).length, 2);
     assert.deepEqual(conflicts(a, [c]), []);
     assert.deepEqual(conflicts(a, [a]), []);
+  });
+
+  it("port app python bentrok dengan app node", () => {
+    const node = parseManifest(nodeManifest("words", { port: 4700 }));
+    const python = parseManifest(pythonManifest("tools"));
+    assert.deepEqual(conflicts(python, [node]), ['port 4700 sudah dipakai app "words"']);
   });
 
   it("situs statis tidak punya port", () => {

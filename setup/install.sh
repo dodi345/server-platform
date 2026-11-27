@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pasang atau perbarui server-platform: Caddy, Node.js, perintah `app`, user deploy, template
+# Pasang atau perbarui server-platform: Caddy, Node.js, Python 3, perintah `app`, user deploy, template
 # systemd, config Caddy. Aman dijalankan ulang. Perbarui platform:
 #
 #   cd /opt/server-platform && sudo git pull && sudo bash setup/install.sh
@@ -47,6 +47,15 @@ if [[ "$(node --version 2>/dev/null | sed -E 's/^v([0-9]+).*/\1/')" != "$NODE_MA
 fi
 [[ "$(command -v node)" == /usr/bin/node ]] || die "node harus di /usr/bin/node (dipakai template systemd)"
 node --version
+
+# App type "python" berjalan dengan /usr/bin/python3.<minor> bawaan Ubuntu (24.04 = 3.12). Dependency-nya
+# dipasang di GitHub ke folder vendor/ paket, jadi server tidak butuh pip/venv.
+step "Python 3 (paket Ubuntu, untuk app type python)"
+if ! command -v python3 >/dev/null; then
+  apt-get update -q
+  apt-get -y -q install python3
+fi
+python3 --version
 
 step "Perintah app, app-deploy, app-deploy-ssh"
 rm -rf "$LIB.new"

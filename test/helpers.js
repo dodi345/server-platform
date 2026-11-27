@@ -13,6 +13,7 @@ import { platformPaths, realRun } from "../lib/system.js";
  * @property {(url: string) => number} [health] status HTTP per panggilan (default 200)
  * @property {boolean} [caddyValid]
  * @property {string} [nodeVersion]
+ * @property {string | null} [pythonVersion] output `python3.x --version`; null = tidak terpasang
  * @property {() => string} [activeState] hasil `systemctl is-active`
  * @property {() => number} [restarts] NRestarts (restart otomatis karena crash)
  */
@@ -47,6 +48,10 @@ export function fakeSystem(options = {}) {
       if (cmd === "tar" || cmd === "ssh-keygen") return realRun(cmd, args, opts);
       const ok = (/** @type {string} */ stdout = "") => ({ status: 0, stdout, stderr: "" });
       if (cmd.endsWith("/node") && args[0] === "--version") return ok(`${options.nodeVersion ?? "v24.11.1"}\n`);
+      if (/\/python3\.\d+$/.test(cmd) && args[0] === "--version") {
+        if (options.pythonVersion === null) return { status: 127, stdout: "", stderr: `${cmd}: not found` };
+        return ok(`${options.pythonVersion ?? "Python 3.12.3"}\n`);
+      }
       if (cmd === "systemctl" && args[0] === "is-active") return ok(`${options.activeState?.() ?? "active"}\n`);
       if (cmd === "systemctl" && args[0] === "show" && args.includes("--value")) return ok(`${options.restarts?.() ?? 0}\n`);
       if (cmd === "systemctl" && args[0] === "show") {
@@ -111,3 +116,25 @@ export function nodeManifest(name, overrides = {}) {
 }
 
 export const NODE_FILES = { "dist/server.js": "console.log('hi')\n", "package.json": "{}\n" };
+
+/**
+ * App Python seperti compress-img: dependency di vendor/ (pip install --target), gunicorn sebagai modul.
+ * @param {string} name
+ * @param {Record<string, unknown>} [overrides]
+ */
+export function pythonManifest(name, overrides = {}) {
+  return {
+    name,
+    type: "python",
+    domains: [`${name}.stackfolio.web.id`],
+    python: "3.12",
+    build: 'python -m pip install --target vendor ".[server]"',
+    package: ["vendor"],
+    port: 4700,
+    start: ["python", "-m", "gunicorn", "--bind", "127.0.0.1:4700", "tools_work.web.wsgi:app"],
+    health: "/api/health",
+    ...overrides,
+  };
+}
+
+export const PYTHON_FILES = { "vendor/tools_work/__init__.py": "\n", "vendor/gunicorn/__init__.py": "\n" };

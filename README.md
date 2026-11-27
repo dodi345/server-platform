@@ -56,8 +56,8 @@ Cloudflare (sekali):
 
 ## 2. Menambah project
 
-**a. Di repo project, tambahkan `deploy.json`.** Contoh ada di `templates/deploy.node.json` dan
-`templates/deploy.static.json`.
+**a. Di repo project, tambahkan `deploy.json`.** Contoh ada di `templates/deploy.node.json`,
+`templates/deploy.python.json`, dan `templates/deploy.static.json`.
 
 **b. Di repo project, tambahkan workflow.** Salin `templates/caller-workflow.yml` ke
 `.github/workflows/deploy.yml`, atau tambahkan job-nya ke workflow CI yang sudah ada dengan
@@ -86,19 +86,20 @@ Kalau memakai **domain baru** (bukan `*.stackfolio.web.id`):
 | Field | Tipe | Wajib | Isi |
 |---|---|---|---|
 | `name` | semua | ✓ | sama dengan `sudo app register <nama>` (huruf kecil, angka, `-`) |
-| `type` | semua | ✓ | `"node"` (service) atau `"static"` (file statis) |
+| `type` | semua | ✓ | `"node"` atau `"python"` (service), atau `"static"` (file statis) |
 | `domains` | semua | ✓ | daftar domain; sertifikat HTTPS otomatis |
 | `redirect_www` | semua | | `true` = `www.x` dialihkan ke `x` (keduanya harus ada di `domains`) |
 | `node` | semua | node: ✓ | versi mayor Node untuk build di GitHub (dan di server untuk app node), mis. `"24"` |
+| `python` | python | ✓ | versi Python **sama dengan di server**, mis. `"3.12"` (Ubuntu 24.04). Dipakai untuk build di GitHub dan menjalankan app (`/usr/bin/python3.12`) |
 | `build` | semua | | perintah build di GitHub, mis. `"npm ci && npm run build && npm prune --omit=dev"` |
 | `package` | semua | ✓ | path hasil build yang dikirim ke server (`deploy.json` selalu ikut) |
-| `port` | node | ✓ | port app di `127.0.0.1` (unik per server, 1024–65535) |
-| `start` | node | ✓ | `["node", "<file>", ...]` relatif ke folder release |
-| `health` | node | | path health check (default `/`); harus 2xx/3xx dalam 60 detik |
-| `shared` | node | | folder data yang bertahan antar deploy, mis. `["data"]` (tidak boleh ikut `package`) |
-| `memory` | node | | batas RAM systemd, default `"300M"` |
-| `required_env` | node | | variabel `.env` yang wajib terisi; kosong = deploy ditolak sebelum restart |
-| `backup` | node | | file/folder di dalam `shared` yang ikut backup off-site, mis. `["data/app.db"]`. File SQLite disnapshot dengan aman walau app sedang menulis (v1.5) |
+| `port` | node, python | ✓ | port app di `127.0.0.1` (unik per server, 1024–65535) |
+| `start` | node, python | ✓ | node: `["node", "<file>", ...]`; python: `["python", "-m", "<modul>", ...]` atau `["python", "<file>.py", ...]`. Relatif ke folder release |
+| `health` | node, python | | path health check (default `/`); harus 2xx/3xx dalam 60 detik |
+| `shared` | node, python | | folder data yang bertahan antar deploy, mis. `["data"]` (tidak boleh ikut `package`) |
+| `memory` | node, python | | batas RAM systemd, default `"300M"` |
+| `required_env` | node, python | | variabel `.env` yang wajib terisi; kosong = deploy ditolak sebelum restart |
+| `backup` | node, python | | file/folder di dalam `shared` yang ikut backup off-site, mis. `["data/app.db"]`. File SQLite disnapshot dengan aman walau app sedang menulis (v1.5) |
 | `root` | static | | folder berisi `index.html` (default `.`) |
 | `spa` | static | | `true` = path tak dikenal → `index.html` |
 | `clean_urls` | static | | `true` = `/card` menyajikan `card.html` (atau `card/index.html`) |
@@ -111,9 +112,28 @@ Kalau memakai **domain baru** (bukan `*.stackfolio.web.id`):
 Semua nilai divalidasi ketat (tanpa kutip, kurung kurawal, atau baris baru), jadi `deploy.json` tidak bisa
 menyisipkan config Caddy lain. `Cache-Control` diatur platform lewat `immutable`.
 
-App node berjalan dengan `WorkingDirectory` = folder release, sebagai user `app-<nama>`, dengan env dari
-`shared/.env`. App hanya bisa menulis ke `shared/`, dan harus listen di `127.0.0.1:<port>`; Caddy yang
-melayani publik.
+App node/python berjalan dengan `WorkingDirectory` = folder release, sebagai user `app-<nama>`, dengan env dari
+`shared/.env`. App hanya bisa menulis ke `shared/` (dan `/tmp` pribadinya), dan harus listen di
+`127.0.0.1:<port>`; Caddy yang melayani publik.
+
+**App Python (v1.6).** Server tidak menjalankan pip atau venv. Dependency dipasang saat build di GitHub ke
+folder `vendor/` di paket, dengan Python versi yang sama dengan server:
+
+```json
+"build": "python -m pip install --no-cache-dir --target vendor \".[server]\"",
+"package": ["vendor"],
+"start": ["python", "-m", "gunicorn", "--workers", "2", "--bind", "127.0.0.1:4700", "contoh.wsgi:app"]
+```
+
+- Project dengan `pyproject.toml` ikut terpasang ke `vendor/` (seperti di atas). Tanpa `pyproject.toml`:
+  `pip install --target vendor -r requirements.txt`, lalu tambahkan folder kode ke `package`.
+- Service dijalankan dengan `/usr/bin/python<versi>` dan `PYTHONPATH=vendor` (plus `PYTHONUNBUFFERED=1`, tanpa
+  file `.pyc`, dan `MALLOC_ARENA_MAX=2` supaya server ber-thread tidak menimbun RAM; bisa ditimpa di `.env`).
+  Folder release ikut di `sys.path` lewat `-m`.
+- Versi Python di server dicek sebelum restart; beda versi = deploy ditolak (wheel seperti Pillow/numpy hanya
+  cocok untuk versi Python tempat ia dipasang). Runner GitHub `ubuntu-24.04` x86_64 sama dengan server.
+- Bind ke `127.0.0.1` dengan port yang sama dengan `port`. `sudo app exec <nama> python -m ...` memakai
+  Python dan `vendor/` yang sama.
 
 ## 4. Perintah `app` (di server)
 
@@ -230,6 +250,8 @@ di-reload.
 | Backup: `R2 menolak … SignatureDoesNotMatch` | Secret Access Key salah; `sudo app backup-setup --keep-key` |
 | Backup: `R2 menolak … AccessDenied` | Token R2 bukan *Object Read & Write* untuk bucket itu |
 | Job deploy: `backup: field tidak dikenal` | Platform di server masih versi lama; perbarui platform dulu (bagian 8) |
+| Job deploy: `type: harus "node" atau "static"` | App python butuh platform v1.6; perbarui platform dulu (bagian 8) |
+| Job deploy: `deploy.json minta Python 3.x, server …` | Samakan `python` di deploy.json dengan `python3 --version` di server |
 
 ## Pengembangan
 

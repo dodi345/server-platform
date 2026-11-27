@@ -1,0 +1,12 @@
+{
+  "name": "contoh-py",
+  "type": "python",
+  "domains": ["py.stackfolio.web.id"],
+  "python": "3.12",
+  "build": "python -m pip install --no-cache-dir --target vendor \".[server]\"",
+  "package": ["vendor"],
+  "port": 4700,
+  "start": ["python", "-m", "gunicorn", "--workers", "2", "--bind", "127.0.0.1:4700", "contoh.wsgi:app"],
+  "health": "/health",
+  "memory": "256M"
+}

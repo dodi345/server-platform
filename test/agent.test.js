@@ -7,7 +7,15 @@ import { main } from "../lib/cli.js";
 import { deploy } from "../lib/deploy.js";
 import { envValueProblem, formatEnvLine, missingEnv, setEnvValue, unsetEnvValue } from "../lib/envfile.js";
 import { appPaths } from "../lib/registry.js";
-import { createTestEnv, fakeSystem, makeArchive, NODE_FILES, nodeManifest } from "./helpers.js";
+import {
+  createTestEnv,
+  fakeSystem,
+  makeArchive,
+  NODE_FILES,
+  nodeManifest,
+  PYTHON_FILES,
+  pythonManifest,
+} from "./helpers.js";
 
 /** @type {ReturnType<typeof createTestEnv>} */
 let env;
@@ -82,6 +90,19 @@ describe("agent: operasi", () => {
 
     const status = await call({ op: "status", name: "words" });
     assert.equal(/** @type {any} */ (status.response.data).history.at(-1).result, "ok");
+  });
+
+  it("app python tampil seperti app node: port, health, batas RAM, properti systemd", async () => {
+    await main(["register", "tools"], { paths: env.paths, sys: fakeSystem().sys });
+    const archive = makeArchive(env.root, pythonManifest("tools", { memory: "350M" }), PYTHON_FILES);
+    await deploy({ paths: env.paths, sys: fakeSystem().sys, name: "tools", sha: "abcdef1234", archive, stableMs: 0 });
+    const { response } = await call({ op: "list" });
+    const [app] = /** @type {any[]} */ (response.data);
+    assert.equal(app.type, "python");
+    assert.equal(app.port, 4700);
+    assert.equal(app.health, "/api/health");
+    assert.equal(app.memoryLimit, "350M");
+    assert.equal(app.unit.active, "active");
   });
 
   it("env-keys: nama variabel + yang wajib belum diisi, tanpa nilai", async () => {

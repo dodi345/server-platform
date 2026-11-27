@@ -6,7 +6,15 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 import { main } from "../lib/cli.js";
 import { DeployError, deploy, KEEP_RELEASES, releaseName, rollback } from "../lib/deploy.js";
 import { appPaths, readState } from "../lib/registry.js";
-import { createTestEnv, fakeSystem, makeArchive, NODE_FILES, nodeManifest } from "./helpers.js";
+import {
+  createTestEnv,
+  fakeSystem,
+  makeArchive,
+  NODE_FILES,
+  nodeManifest,
+  PYTHON_FILES,
+  pythonManifest,
+} from "./helpers.js";
 
 /** @type {ReturnType<typeof createTestEnv>} */
 let env;
@@ -215,6 +223,45 @@ describe("rollback", () => {
       rollback({ paths: env.paths, sys: fakeSystem().sys, name: "words" }),
       /tidak ada release sebelumnya/,
     );
+  });
+});
+
+describe("deploy app python", () => {
+  it("service python3.<versi> dari vendor/, health check, Caddy reverse proxy", async () => {
+    await register("tools");
+    const fake = fakeSystem();
+    await run("tools", SHA1, pythonManifest("tools", { memory: "350M" }), fake, PYTHON_FILES);
+    const app = appPaths(env.paths, "tools");
+    assert.ok(fake.calls.includes("/usr/bin/python3.12 --version"));
+    const dropIn = fs.readFileSync(app.dropIn, "utf8");
+    assert.match(dropIn, /^ExecStart=\/usr\/bin\/python3\.12 -m gunicorn --bind 127\.0\.0\.1:4700 tools_work\.web\.wsgi:app$/m);
+    assert.match(dropIn, /^Environment=PYTHONPATH=vendor PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 MALLOC_ARENA_MAX=2$/m);
+    assert.match(dropIn, /^MemoryMax=350M$/m);
+    assert.ok(fake.calls.includes("systemctl restart app@tools.service"));
+    assert.match(fs.readFileSync(app.site, "utf8"), /reverse_proxy 127\.0\.0\.1:4700/);
+    assert.equal(readState(app, "tools").current?.sha, SHA1);
+  });
+
+  it("versi Python server beda atau tidak terpasang → ditolak sebelum app disentuh", async () => {
+    await register("tools");
+    const older = fakeSystem({ pythonVersion: "Python 3.11.9" });
+    await assert.rejects(
+      run("tools", SHA1, pythonManifest("tools"), older, PYTHON_FILES),
+      /deploy\.json minta Python 3\.12, server punya Python 3\.11\.9 di \/usr\/bin\/python3\.12/,
+    );
+    const missing = fakeSystem({ pythonVersion: null });
+    await assert.rejects(
+      run("tools", SHA1, pythonManifest("tools"), missing, PYTHON_FILES),
+      /server tidak punya \/usr\/bin\/python3\.12/,
+    );
+    for (const fake of [older, missing]) assert.ok(!fake.calls.some((c) => c.startsWith("systemctl restart")));
+  });
+
+  it("start berupa file .py harus ada di paket", async () => {
+    await register("tools");
+    const manifest = pythonManifest("tools", { start: ["python", "app.py"] });
+    await assert.rejects(run("tools", SHA1, manifest, fakeSystem(), PYTHON_FILES), /file start "app\.py" tidak ada di paket/);
+    await run("tools", SHA2, manifest, fakeSystem(), { ...PYTHON_FILES, "app.py": "print('hi')\n" });
   });
 });
 
